@@ -35,13 +35,15 @@ struct FlatPool final {
         int32_t index_ = SelfT::skInvalidIndex;
     };
 
-    struct Chunk {
+    struct alignas(8) Chunk {
         using SuperT = FlatPool<InnerData>;
 
         static constexpr int32_t skSize = SuperT::skChunkCapacity;
         static constexpr int32_t skOffsetMask = ~(Chunk::skSize - 1);
         static constexpr int32_t skMask = SuperT::skChunkCapacityMask;
         static constexpr int32_t skDefaultPageSize = 4096;
+
+        InnerData* data_ = nullptr;
 
         Chunk() = default;
         ~Chunk() {
@@ -55,9 +57,6 @@ struct FlatPool final {
 
         inline InnerData& operator[](uint32_t index) { return data_[index & Chunk::skMask]; }
         inline const InnerData& operator[](uint32_t index) const { return data_[index & Chunk::skMask]; }
-
-       private:
-        InnerData* data_ = nullptr;
     };
 
     FlatPool() = default;
@@ -69,7 +68,7 @@ struct FlatPool final {
     FlatPool& operator=(FlatPool&& other) = delete;
     FlatPool& operator=(const FlatPool& other) = delete;
 
-    inline DataT* alloc() {
+    inline DataT* allocate() {
         if (freeIndex_ == SelfT::skInvalidIndex) [[likely]] {
             Chunk& chunkRef = getChunk();
             InnerData& dataRef = chunkRef[++latestIndex_];
@@ -82,8 +81,8 @@ struct FlatPool final {
         }
     }
 
-    // should safe-check
-    inline void dealloc(const DataT* data) {
+    // ? should safe-check
+    inline void deallocate(const DataT* data) {
         if (!data) return;
 
         InnerData* innerData = const_cast<InnerData*>(reinterpret_cast<const InnerData*>(data));
@@ -101,8 +100,8 @@ struct FlatPool final {
     inline const InnerData& at(uint32_t index) const { return chunks_[index >> SelfT::skChunkCapacityExponent][index]; }
 
     inline Chunk& getChunk() {
-        const bool noNeedNewChunk = ((latestIndex_ + 1) & SelfT::skChunkCapacityMask);
-        if (noNeedNewChunk) [[likely]] {
+        const bool notNeedNewChunk = ((latestIndex_ + 1) & SelfT::skChunkCapacityMask);
+        if (notNeedNewChunk) [[likely]] {
             return chunks_[latestChunkIndex_];
         } else {
             Chunk& chunkRef = chunks_[++latestChunkIndex_];
